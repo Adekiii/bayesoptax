@@ -14,7 +14,6 @@ def run_seeds(
     bounds: jax.Array,
     n_seeds: int = 10,
     base_key: jax.Array | None = None,
-    verbose: bool = False,
     **run_kwargs,
 ) -> MultiBOResult:
     """Run the BO loop across n_seeds random seeds.
@@ -47,6 +46,11 @@ def run_seeds(
         all_results.append(result)
 
         print(f"best y = {result.best_y:.4f}")
+
+    indexed_results = list(enumerate(best_ys, start=1))
+    sorted_results = sorted(indexed_results, key=lambda x: x[1])
+    formatted_results = ([f"{i}: {y:.4f}" for i, y in sorted_results])
+    print("best seeds: ", ", ".join(formatted_results))
 
     return MultiBOResult(
         histories = jnp.stack(histories, axis=0),
