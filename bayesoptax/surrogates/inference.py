@@ -108,7 +108,7 @@ def fit(
  
     base_params = (
         init_params_override if init_params_override is not None
-        else init_params(kernel_name)
+        else init_params(kernel_name, D=X.shape[1])
     )
  
     restart_keys = jr.split(key, n_restarts)
