@@ -7,6 +7,7 @@ from ..surrogates.gp import predict
 from ..surrogates.inference import fit
 from ..acquisitions import get_acquisition
 from .candidates import sample_initial, sample_candidates
+from ..utils import Bounds
 from .result import BOResult
 
 
@@ -35,6 +36,8 @@ def run(
         acquisition_kwargs = {}
     if fit_kwargs is None:
         fit_kwargs = {}
+    if isinstance(bounds, Bounds):
+        bounds = bounds.to_array()
 
     acquisition_fn = get_acquisition(acquisition_name)
 
