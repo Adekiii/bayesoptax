@@ -28,6 +28,7 @@ def run_seeds(
     n_iter = run_kwargs.get("n_iter", 50)
 
     histories = []
+    best_xs = []
     best_ys = []
     all_results = []
 
@@ -42,6 +43,7 @@ def run_seeds(
         )
 
         histories.append(result.history)
+        best_xs.append(result.best_x)
         best_ys.append(result.best_y)
         all_results.append(result)
 
@@ -54,6 +56,7 @@ def run_seeds(
 
     return MultiBOResult(
         histories = jnp.stack(histories, axis=0),
+        best_xs = jnp.array(best_xs),
         best_ys = jnp.array(best_ys),
         results = all_results,
         n_seeds = n_seeds,

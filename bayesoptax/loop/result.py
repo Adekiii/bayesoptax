@@ -36,6 +36,7 @@ class MultiBOResult:
     """Dataclass for multi-seed BO loop results."""
 
     histories: jax.Array
+    best_xs: jax.Array
     best_ys: jax.Array
     results: list[BOResult] = field(default_factory=list)
     n_seeds: int = 0
