@@ -1,16 +1,12 @@
 import jax
-import jax.numpy as jnp
 import jax.random as jr
-from pyDOE import lhs
 
 
 def sample_candidates(key: jax.Array, bounds: jax.Array, n_candidates: int):
-    """Sample candidate points within given bounds using LHS."""
+    """Sample candidate points uniformly within given bounds."""
 
-    D = bounds.shape[0]
     lb, ub = bounds[:, 0], bounds[:, 1]
-    candidates = lb + lhs(D, n_candidates) * (ub - lb)
-    return candidates
+    return jr.uniform(key, shape=(n_candidates, lb.shape[0]), minval=lb, maxval=ub)
 
 
 def sample_initial(key: jax.Array, bounds: jax.Array, n_init: int):
