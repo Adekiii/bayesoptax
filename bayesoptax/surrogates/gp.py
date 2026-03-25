@@ -11,21 +11,11 @@ from ..kernels import get_kernel
 
 JITTER = 1e-6
 
-def init_params(kernel_name: str, D: int = 1) -> dict:
-    """Get initial default parameters for corresponding kernel.
-    
-    D is used to scale initial lengthscale with dimensionality.
-    https://arxiv.org/pdf/2502.09198
-    """
+def init_params(kernel_name: str) -> dict:
+    """Get initial default parameters for corresponding kernel."""
 
     _, default_params_fn = get_kernel(kernel_name)
     kernel_params = default_params_fn()
-
-    scaled_ls = jnp.log(jnp.sqrt(D) / 10.0)
-    kernel_params = {
-        **kernel_params,
-        "log_lengthscale": jnp.full_like(kernel_params["log_lengthscale"], scaled_ls)
-    }
 
     return {
         "kernel": kernel_params,

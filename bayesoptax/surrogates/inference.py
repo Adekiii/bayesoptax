@@ -106,7 +106,7 @@ def fit(
     if key is None:
         key = jr.PRNGKey(0)
  
-    fresh_params = init_params(kernel_name, D=X.shape[1])
+    fresh_params = init_params(kernel_name)
 
     restart_keys = jr.split(key, n_restarts)
     init_params_list = [
