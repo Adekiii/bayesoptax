@@ -106,16 +106,15 @@ def fit(
     if key is None:
         key = jr.PRNGKey(0)
  
-    base_params = (
-        init_params_override if init_params_override is not None
-        else init_params(kernel_name, D=X.shape[1])
-    )
- 
+    fresh_params = init_params(kernel_name, D=X.shape[1])
+
     restart_keys = jr.split(key, n_restarts)
     init_params_list = [
-        _perturb_params(base_params, k, scale=perturbation_scale)
+        _perturb_params(fresh_params, k, scale=perturbation_scale)
         for k in restart_keys
     ]
+    if init_params_override is not None:
+        init_params_list[0] = init_params_override
  
     results = [
         _fit_single(p, X, y, kernel_name, max_iter, tol)

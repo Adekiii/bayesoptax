@@ -64,7 +64,7 @@ def run(
         key, subkey = jr.split(key)
         fitted_params = fit(
             X_obs, y_norm, kernel_name=kernel_name,
-            init_params_override=fitted_params, key=subkey,
+            init_params_override=fitted_params if t>0 else None, key=subkey,
             **fit_kwargs
         )
 
