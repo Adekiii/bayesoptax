@@ -74,7 +74,8 @@ def run(
         key, subkey = jr.split(key)
 
         X_cands = sample_candidates(subkey, bounds, n_candidates)
-        mean, var = predict(fitted_params, X_obs, y_norm, X_cands, kernel_name)
+        X_cands_norm = (X_cands - lb) / (ub - lb)
+        mean, var = predict(fitted_params, X_obs_norm, y_norm, X_cands_norm, kernel_name)
 
         if acquisition_name == "ei":
             scores = acquisition_fn(mean, var, y_norm.min(), **acquisition_kwargs)
