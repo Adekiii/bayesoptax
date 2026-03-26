@@ -45,7 +45,7 @@ def run(
     if X_init is not None and y_init is not None:
         X_obs = X_init
         y_obs = y_init
-    elif X_init or y_init:
+    elif (X_init is not None) or (y_init is not None):
         raise ValueError("Provide both X_init and y_init (or neither).")
     else:
         key, subkey = jr.split(key)
