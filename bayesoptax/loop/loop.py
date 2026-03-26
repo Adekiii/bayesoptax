@@ -40,6 +40,7 @@ def run(
         bounds = bounds.to_array()
 
     acquisition_fn = get_acquisition(acquisition_name)
+    lb, ub = bounds[:, 0], bounds[:, 1]
 
     if X_init is not None and y_init is not None:
         X_obs = X_init
@@ -61,9 +62,11 @@ def run(
         y_std = y_obs.std() + 1e-8
         y_norm = (y_obs - y_mean) / y_std
 
+        X_obs_norm = (X_obs - lb) / (ub - lb)
+
         key, subkey = jr.split(key)
         fitted_params = fit(
-            X_obs, y_norm, kernel_name=kernel_name,
+            X_obs_norm, y_norm, kernel_name=kernel_name,
             init_params_override=fitted_params if t>0 else None, key=subkey,
             **fit_kwargs
         )
@@ -81,10 +84,10 @@ def run(
         else:
             scores = acquisition_fn(mean, var, **acquisition_kwargs)
         
-        x_next = X_cands[jnp.argmax(scores)]
-        y_next = objective(x_next)
+        X_next = X_cands[jnp.argmax(scores)]
+        y_next = objective(X_next)
 
-        X_obs = jnp.concatenate([X_obs, x_next[None]], axis=0)
+        X_obs = jnp.concatenate([X_obs, X_next[None]], axis=0)
         y_obs = jnp.concatenate([y_obs, jnp.array([y_next])], axis=0)
 
         history.append(float(y_obs.min()))
