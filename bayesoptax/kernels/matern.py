@@ -24,10 +24,10 @@ def matern52(x1, x2, params):
     return var * (1.0 + sr + (5.0 / 3.0) * r**2) * jnp.exp(-sr)
 
 
-def matern_default_params():
+def matern_default_params(D: int = 1):
     """Returns default initial parameters for the Matern kernels in log scale."""
 
     return {
-        "log_lengthscale": jnp.zeros(()),
+        "log_lengthscale": jnp.zeros(D),
         "log_variance": jnp.zeros(())
     }

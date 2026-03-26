@@ -11,11 +11,11 @@ from ..kernels import get_kernel
 
 JITTER = 1e-6
 
-def init_params(kernel_name: str) -> dict:
+def init_params(kernel_name: str, D: int = 1) -> dict:
     """Get initial default parameters for corresponding kernel."""
 
     _, default_params_fn = get_kernel(kernel_name)
-    kernel_params = default_params_fn()
+    kernel_params = default_params_fn(D)
 
     return {
         "kernel": kernel_params,

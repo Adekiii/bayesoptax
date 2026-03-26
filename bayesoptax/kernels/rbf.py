@@ -12,10 +12,10 @@ def rbf(x1, x2, params):
     return var * jnp.exp(-0.5 * sq_dist(x1 / l, x2 / l))
 
 
-def rbf_default_params():
+def rbf_default_params(D: int = 1):
     """Returns default initial parameters for RBF in log scale."""
-    
+
     return {
-        "log_lengthscale": jnp.zeros(()),
+        "log_lengthscale": jnp.zeros(D),
         "log_variance": jnp.zeros(())
     }
