@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from epileptic_bistable import R_CYCLE
+from .epileptic_bistable import R_CYCLE
 
 
 NUM_NEURONS = 2
