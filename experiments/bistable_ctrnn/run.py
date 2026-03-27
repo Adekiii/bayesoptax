@@ -7,11 +7,11 @@ from jax.flatten_util import ravel_pytree
 import matplotlib.pyplot as plt
 import diffrax
 
-from tasks.epileptic_bistable import dynamics, PLANT_PARAMS, R_CYCLE
-from controllers import ctrnn
+from epileptic_bistable import dynamics, PLANT_PARAMS, R_CYCLE
+from bistable_ctrnn import ctrnn
 from bayesoptax.loop import run_seeds
 from bayesoptax.utils import Bounds
-import experiments.bistable_ctrnn.config as cfg
+import config as cfg
 
 
 def joint_system(t, state, args):
