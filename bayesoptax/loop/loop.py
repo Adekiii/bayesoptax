@@ -16,7 +16,7 @@ def run(
         bounds: jax.Array,
         n_init: int = 10,
         n_iter: int = 50,
-        n_candidates: int = 1000,
+        n_candidates: int = 2048,
         kernel_name: str ="rbf",
         acquisition_name: str = "ei",
         acquisition_kwargs: dict | None = None,
