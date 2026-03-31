@@ -5,7 +5,7 @@ from jax.scipy.stats import norm
 
 
 def ei(
-    mean: jax.Array, var: jax.Array, best_y: jax.Array, xi: float=0.01) -> jax.Array:
+    mean: jax.Array, var: jax.Array, best_y: jax.Array, xi: float=0.01, **kwargs) -> jax.Array:
     """Expected Improvement (EI) acquisition function."""
 
     sigma = jnp.sqrt(jnp.clip(var, min=1e-9))
@@ -14,14 +14,14 @@ def ei(
 
 
 def lcb(
-    mean: jax.Array, var: jax.Array, beta: float=2.0) -> jax.Array:
+    mean: jax.Array, var: jax.Array, beta: float=2.0, **kwargs) -> jax.Array:
     """Lower Confidence Bound (LCB) acquisition function."""
 
     return -(mean - jnp.sqrt(beta) * jnp.sqrt(jnp.clip(var, min=1e-9)))
 
 
 def ts(
-    mean: jax.Array, var: jax.Array, key: jax.Array) -> jax.Array:
+    mean: jax.Array, var: jax.Array, key: jax.Array, **kwargs) -> jax.Array:
     """Thompson Sampling (TS) acquisition function."""
 
     std = jnp.sqrt(jnp.clip(var, min=1e-9))
