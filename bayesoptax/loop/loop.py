@@ -8,6 +8,7 @@ from ..surrogates.inference import fit
 from ..acquisitions import get_acquisition
 from .candidates import sample_initial
 from .optimize import optimize_acquisition
+from .random_search import run_random_search
 from ..utils import Bounds
 from .result import BOResult
 
@@ -57,7 +58,8 @@ def run(
 
     print(f"Initializing {n_init} points. Best y = {float(y_obs.min())}")
 
-    history = []
+    init_history = jnp.minimum.accumulate(y_obs).tolist()
+    history = list(init_history)
     fitted_params = None
 
     for t in range(n_iter):
@@ -109,10 +111,14 @@ def run(
 
     best_idx = int(jnp.argmin(y_obs))
 
+    key, rs_key = jr.split(key)
+    random_history = run_random_search(objective, bounds, n_init + n_iter, rs_key)
+
     return BOResult(
         X_obs = X_obs,
         y_obs = y_obs,
         best_x = X_obs[best_idx],
         best_y = float(y_obs[best_idx]),
-        history = jnp.array(history)
+        history = jnp.array(history),
+        random_history = random_history,
     )

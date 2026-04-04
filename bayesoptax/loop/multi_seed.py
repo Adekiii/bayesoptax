@@ -25,9 +25,9 @@ def run_seeds(
         base_key = jr.PRNGKey(0)
 
     seed_keys = jr.split(base_key, n_seeds)
-    n_iter = run_kwargs.get("n_iter", 50)
 
     histories = []
+    random_histories = []
     best_xs = []
     best_ys = []
     all_results = []
@@ -43,6 +43,8 @@ def run_seeds(
         )
 
         histories.append(result.history)
+        if result.random_history is not None:
+            random_histories.append(result.random_history)
         best_xs.append(result.best_x)
         best_ys.append(result.best_y)
         all_results.append(result)
@@ -60,5 +62,6 @@ def run_seeds(
         best_ys = jnp.array(best_ys),
         results = all_results,
         n_seeds = n_seeds,
-        n_iter = n_iter,
+        n_iter = len(all_results[0].history),
+        random_histories = jnp.stack(random_histories, axis=0) if random_histories else None,
     )
