@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 @dataclass
@@ -17,12 +18,14 @@ class BOResult:
     def plot(self, true_optimum: float | None=None):
         """Plot BO curve: best-so-far objective vs iteration."""
 
+        sns.set_theme()
         fig, ax = plt.subplots(figsize=(8, 6))
-        ax.plot(self.history, label="best y")
+        iters = jnp.arange(1, len(self.history) + 1)
+        sns.lineplot(x=iters, y=jnp.array(self.history), label="best y", ax=ax)
 
         if true_optimum is not None:
             ax.axhline(true_optimum, linestyle="--", label=f"optimum ({true_optimum})")
-        
+
         ax.set_xlabel("iteration")
         ax.set_ylabel("best observed y")
         ax.set_title("BO result")
@@ -61,6 +64,7 @@ class MultiBOResult:
     def plot(self, true_optimum: float | None=None, show_individual: bool=True):
         """Plot mean BO curves with 95% CI bands."""
 
+        sns.set_theme()
         fig, ax = plt.subplots(figsize=(8, 6))
 
         iters = jnp.arange(1, self.n_iter + 1)
@@ -69,9 +73,9 @@ class MultiBOResult:
 
         if show_individual:
             for h in self.histories:
-                ax.plot(iters, jnp.array(h), alpha=0.15)
+                sns.lineplot(x=iters, y=jnp.array(h), alpha=0.15, ax=ax, legend=False)
 
-        ax.plot(iters, mean, label=f"mean (n={self.n_seeds})")
+        sns.lineplot(x=iters, y=mean, label=f"mean (n={self.n_seeds})", ax=ax)
         ax.fill_between(
             iters, mean - ci, mean + ci,
             alpha=0.25, label="95% CI"
@@ -79,7 +83,7 @@ class MultiBOResult:
 
         if true_optimum is not None:
             ax.axhline(true_optimum, linestyle="--", label=f"optimum ({true_optimum})")
-        
+
         ax.set_xlabel("iteration")
         ax.set_ylabel("best observed y")
         ax.set_title(f"BO result - {self.n_seeds} seeds")
