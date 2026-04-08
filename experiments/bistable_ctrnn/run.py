@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 import diffrax
 
 from .epileptic_bistable import dynamics, PLANT_PARAMS
-from . import ctrnn, config as cfg
+from experiments.controllers import ctrnn
+from . import config as cfg
 from bayesoptax.loop import run_seeds
 from bayesoptax.utils import Bounds
 
