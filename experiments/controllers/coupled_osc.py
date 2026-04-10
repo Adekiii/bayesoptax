@@ -25,12 +25,10 @@ def step(t, osc_state, plant_state, params):
     kappa = jnp.tanh(params["W_kappa"] @ plant_state + params["b_kappa"])
 
     r_sq = a**2 + b**2
-    a_mean = jnp.mean(a)
-    b_mean = jnp.mean(b)
 
-    da = alpha * a - omega * b - r_sq * a + kappa * a_mean
-    db = omega * a + alpha * b - r_sq * b + kappa * b_mean
+    da = alpha * a - omega * b - r_sq * a + kappa * a
+    db = omega * a + alpha * b - r_sq * b + kappa * b
 
     state_dot = jnp.concatenate([da, db])
-    u = params["V"] @ jnp.tanh(osc_state)
+    u = params["V"] @ osc_state
     return state_dot, u
