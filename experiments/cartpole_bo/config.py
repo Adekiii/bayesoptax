@@ -1,0 +1,11 @@
+N_SEEDS = 10
+N_ITER = 100
+KERNEL = "matern52"
+ACQUISITION = "ts"
+BOUNDS = (-5., 5.)
+
+# REINFORCE hyperparameters
+N_ITERS_PG = 1_000
+N_BATCHES_PG = 32
+LR_PG = 0.005
+GAMMA_PG = 0.99
