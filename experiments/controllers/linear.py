@@ -14,6 +14,6 @@ def init_state():
     return jnp.zeros(0)
 
 
-def step(t, plant_state, params):
+def step(t, controller_state, plant_state, params):
     u = params["W"] @ plant_state + params["b"]
     return jnp.zeros(0), u

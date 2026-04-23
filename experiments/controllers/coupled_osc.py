@@ -16,6 +16,12 @@ def init_params(key, n_osc, n_in=2, n_out=2):
     }
 
 
+def init_state(n_osc):
+    # ensure that the oscillators start with radius 1 and phase 0 
+    # (real part 1, imaginary part 0)
+    return jnp.concatenate([jnp.ones(n_osc), jnp.zeros(n_osc)])
+
+
 def step(t, osc_state, plant_state, params):
     n = len(osc_state) // 2
     a, b = osc_state[:n], osc_state[n:]

@@ -14,6 +14,10 @@ def init_params(key, num_neurons, n_in=2, n_out=2):
     }
 
 
+def init_state(num_neurons):
+    return jnp.zeros(num_neurons)
+
+
 def step(t, ctrnn_state, plant_state, params):
     h = ctrnn_state
     tau = jax.nn.softplus(params["tau"]) + 0.1

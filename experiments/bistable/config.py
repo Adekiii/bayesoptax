@@ -1,8 +1,5 @@
 import jax.numpy as jnp
-from .epileptic_bistable import R_CYCLE
-
-
-NUM_NEURONS = 2
+from .dynamics import R_CYCLE
 
 T0, T1, DT = 0.0, 50.0, 0.05
 N_STEPS = int((T1 - T0) / DT)
