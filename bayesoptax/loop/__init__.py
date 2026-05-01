@@ -5,3 +5,4 @@ from .optimize import optimize_acquisition
 from .random_search import run_random_search, run_random_seeds
 from .cmaes import run_cmaes_seeds
 from .compare import plot_comparison
+from .io import save_run, load_run

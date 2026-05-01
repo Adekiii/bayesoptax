@@ -12,6 +12,8 @@
 # ant                      (27, 8)
 import argparse
 import importlib
+import time
+from datetime import datetime
 
 import jax
 import jax.numpy as jnp
@@ -20,7 +22,7 @@ from jax.flatten_util import ravel_pytree
 from brax import envs
 
 from . import config as cfg
-from bayesoptax.loop import run_seeds, run_cmaes_seeds, run_random_seeds, plot_comparison
+from bayesoptax.loop import run_seeds, run_cmaes_seeds, run_random_seeds, plot_comparison, save_run
 from bayesoptax.utils import Bounds
 
 CONTROLLER_NAMES = ["linear", "ctrnn", "coupled_osc"]
@@ -76,7 +78,7 @@ def make_objective(controller, unflatten, state_kwargs, env):
     return objective
 
 
-def main(env_name, controller_name, num_neurons=4, n_osc=4):
+def main(env_name, controller_name, num_neurons=4, n_osc=4, save_dir="results"):
     env = envs.get_environment(env_name)
     obs_dim = env.observation_size
     action_dim = env.action_size
@@ -100,26 +102,53 @@ def main(env_name, controller_name, num_neurons=4, n_osc=4):
     title = f"Brax {env_name} - {controller_name} (dim={dim})"
 
     print("\n--- Bayesian Optimisation ---")
+    t0 = time.time()
     bo = run_seeds(
         objective=objective, bounds=bounds, n_seeds=cfg.N_SEEDS,
         n_init=n_init, n_iter=cfg.N_ITER,
         kernel_name=cfg.KERNEL, acquisition_name=cfg.ACQUISITION,
         base_key=bo_key,
     )
+    bo_time = time.time() - t0
 
     print("\n--- CMA-ES ---")
+    t0 = time.time()
     cmaes = run_cmaes_seeds(
         objective=objective, bounds=bounds,
         n_eval=n_eval, n_seeds=cfg.N_SEEDS, base_key=cmaes_key,
     )
+    cmaes_time = time.time() - t0
 
     print("\n--- Random Search ---")
+    t0 = time.time()
     random = run_random_seeds(
         objective=objective, bounds=bounds,
         n_eval=n_eval, n_seeds=cfg.N_SEEDS, base_key=random_key,
     )
+    random_time = time.time() - t0
 
-    plot_comparison({"BO": bo, "CMA-ES": cmaes, "Random Search": random}, title=title)
+    results = {"BO": bo, "CMA-ES": cmaes, "Random Search": random}
+    plot_comparison(results, title=title)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = f"{save_dir}/brax_{env_name}_{controller_name}_{timestamp}"
+    save_run(run_dir, results, meta={
+        "experiment": "brax",
+        "env_name": env_name,
+        "controller": controller_name,
+        "num_neurons": num_neurons,
+        "n_osc": n_osc,
+        "dim": dim,
+        "n_seeds": cfg.N_SEEDS,
+        "n_init": n_init,
+        "n_iter": cfg.N_ITER,
+        "n_eval": n_eval,
+        "kernel": cfg.KERNEL,
+        "acquisition": cfg.ACQUISITION,
+        "bounds": list(cfg.BOUNDS),
+        "timing": {"bo": bo_time, "cmaes": cmaes_time, "random": random_time},
+        "timestamp": timestamp,
+    })
 
 
 if __name__ == "__main__":
@@ -128,5 +157,6 @@ if __name__ == "__main__":
     parser.add_argument("--controller", choices=CONTROLLER_NAMES, required=True)
     parser.add_argument("--num-neurons", type=int, default=4)
     parser.add_argument("--n-osc", type=int, default=4)
+    parser.add_argument("--save-dir", type=str, default="results")
     args = parser.parse_args()
-    main(args.env, args.controller, num_neurons=args.num_neurons, n_osc=args.n_osc)
+    main(args.env, args.controller, num_neurons=args.num_neurons, n_osc=args.n_osc, save_dir=args.save_dir)
