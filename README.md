@@ -1,3 +1,7 @@
-# Bayesoptax
+<h2 align="center">BayesOpt for controller params in controlling nonlinear dynamical systems</h2>
 
-Todo: write this
+### About
+This repository contains the codebase and experiments for my master's thesis on Bayesian Optimization; the goal is to directly optimize controller parameters in control of dynamical systems across a range of complexity (e.g., epileptic dynamics model, classical control tasks like cartpole and pendulum, DeepMind suite tasks like hopper and walker). The core implementation is written with JAX for efficiency with jit-compiled functions and automatic vectorization. I aptly named this "bayesoptax" for which the source code can be found in [bayesoptax](./bayesoptax).
+
+### Experiments
+The experiments are contained in [experiments](./experiments). Every experiment has a corresponding `config.py` in which the BayesOpt settings are configured (number of seeds, iterations, kernel function, acquisition function, search bounds), and a `run.py` in which the environments are loaded, objective functions are defined and BayesOpt is run. By using JAX keys, reproducibility is prioritized, and each experiment can be run with a command from the main directory, e.g.: `python -m experiments.cartpole.run --controller coupled_osc --n-osc 3`, which will run the cartpole experiment using a coupled oscillator controller with 3 oscillators. Every experiment automatically runs random search and CMA-ES using the same budget, and plots the results in the same graph for convenience. Furthermore, the entire optimization trace is pickled to an `.npz` file together with the metadata in a `.json` file for data analysis.
