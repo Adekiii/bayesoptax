@@ -49,13 +49,15 @@ def make_rollout(controller, ctrl_params, state_kwargs, env):
         def step_fn(carry, _):
             env_state, ctrl_state, done_acc = carry
 
-            ctrl_state_dot, u = controller.step(0., ctrl_state, env_state.obs, ctrl_params)
+            safe_obs = jnp.where(done_acc, jnp.zeros_like(env_state.obs), env_state.obs)
+            ctrl_state_dot, u = controller.step(0., ctrl_state, safe_obs, ctrl_params)
             new_ctrl_state = ctrl_state + env.dt * ctrl_state_dot
             action = jnp.clip(u, -1.0, 1.0)
 
             next_state = env.step(env_state, action)
             done_acc = jnp.logical_or(done_acc, next_state.done.astype(bool))
-            reward = next_state.reward * (1.0 - done_acc.astype(jnp.float32))
+
+            reward = jnp.where(done_acc, 0.0, next_state.reward)
             new_ctrl_state = jnp.where(done_acc, ctrl_state, new_ctrl_state)
 
             return (next_state, new_ctrl_state, done_acc), reward
@@ -73,7 +75,9 @@ def make_objective(controller, unflatten, state_kwargs, env):
     def objective(flat_params):
         ctrl_params = unflatten(flat_params)
         rollout = make_rollout(controller, ctrl_params, state_kwargs, env)
-        return -rollout(jr.PRNGKey(0))
+        r = rollout(jr.PRNGKey(0))
+
+        return -jnp.where(jnp.isnan(r), 0.0, r)
 
     return objective
 
