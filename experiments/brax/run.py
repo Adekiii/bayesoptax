@@ -22,17 +22,18 @@ from jax.flatten_util import ravel_pytree
 from brax import envs
 
 from . import config as cfg
-from bayesoptax.loop import run_seeds, run_cmaes_seeds, run_random_seeds, plot_comparison, save_run
+from bayesoptax.loop import run_seeds, run_cmaes_seeds, run_random_seeds, plot_comparison, save_run, run_turbo
 from bayesoptax.utils import Bounds
 
-CONTROLLER_NAMES = ["linear", "ctrnn", "coupled_osc"]
+CONTROLLER_NAMES = ["linear", "ctrnn", "coupled_osc", "nonlinear"]
 
 
-def make_controller_configs(num_neurons, n_osc, obs_dim, action_dim):
+def make_controller_configs(num_neurons, n_osc, n_hidden, obs_dim, action_dim):
     return {
         "linear": dict(init_kwargs=dict(n_in=obs_dim, n_out=action_dim), state_kwargs=dict()),
         "ctrnn": dict(init_kwargs=dict(num_neurons=num_neurons, n_in=obs_dim, n_out=action_dim), state_kwargs=dict(num_neurons=num_neurons)),
-        "coupled_osc": dict(init_kwargs=dict(n_osc=n_osc, n_in=obs_dim, n_out=action_dim), state_kwargs=dict(n_osc=n_osc)),
+        "coupled_osc":dict(init_kwargs=dict(n_osc=n_osc, n_in=obs_dim, n_out=action_dim), state_kwargs=dict(n_osc=n_osc)),
+        "nonlinear": dict(init_kwargs=dict(n_in=obs_dim, n_out=action_dim, n_hidden=n_hidden), state_kwargs=dict()),
     }
 
 
@@ -82,7 +83,7 @@ def make_objective(controller, unflatten, state_kwargs, env):
     return objective
 
 
-def main(env_name, controller_name, num_neurons=4, n_osc=4, save_dir="results"):
+def main(env_name, controller_name, num_neurons=4, n_osc=4, n_hidden=8, save_dir="results"):
     env = envs.get_environment(env_name)
     obs_dim = env.observation_size
     action_dim = env.action_size
@@ -91,13 +92,13 @@ def main(env_name, controller_name, num_neurons=4, n_osc=4, save_dir="results"):
     controller = load_controller(controller_name)
 
     key = jr.PRNGKey(0)
-    key, init_key, bo_key, cmaes_key, random_key = jr.split(key, 5)
+    key, init_key, bo_key, turbo_key, cmaes_key, random_key = jr.split(key, 6)
 
-    cfg_ctrl = make_controller_configs(num_neurons, n_osc, obs_dim, action_dim)[controller_name]
+    cfg_ctrl = make_controller_configs(num_neurons, n_osc, n_hidden, obs_dim, action_dim)[controller_name]
     ctrl_params = controller.init_params(init_key, **cfg_ctrl["init_kwargs"])
     flat_params, unflatten = ravel_pytree(ctrl_params)
     dim = len(flat_params)
-    n_init = 2 * dim
+    n_init = 50
     n_eval = n_init + cfg.N_ITER
     print(f"Controller: {controller_name} | parameters: {dim} | total evaluations: {n_eval}")
 
@@ -115,6 +116,16 @@ def main(env_name, controller_name, num_neurons=4, n_osc=4, save_dir="results"):
     )
     bo_time = time.time() - t0
 
+    print("\n--- TuRBO ---")
+    t0 = time.time()
+    turbo = run_seeds(
+        objective=objective, bounds=bounds, n_seeds=cfg.N_SEEDS,
+        n_init=n_init, n_iter=cfg.N_ITER,
+        kernel_name=cfg.KERNEL, acquisition_name=cfg.ACQUISITION,
+        base_key=turbo_key, run_fn=run_turbo,
+    )
+    turbo_time = time.time() - t0
+
     print("\n--- CMA-ES ---")
     t0 = time.time()
     cmaes = run_cmaes_seeds(
@@ -131,7 +142,7 @@ def main(env_name, controller_name, num_neurons=4, n_osc=4, save_dir="results"):
     )
     random_time = time.time() - t0
 
-    results = {"BO": bo, "CMA-ES": cmaes, "Random Search": random}
+    results = {"BO": bo, "TuRBO": turbo, "CMA-ES": cmaes, "Random Search": random}
     plot_comparison(results, title=title)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -142,6 +153,7 @@ def main(env_name, controller_name, num_neurons=4, n_osc=4, save_dir="results"):
         "controller": controller_name,
         "num_neurons": num_neurons,
         "n_osc": n_osc,
+        "n_hidden": n_hidden,
         "dim": dim,
         "n_seeds": cfg.N_SEEDS,
         "n_init": n_init,
@@ -150,7 +162,7 @@ def main(env_name, controller_name, num_neurons=4, n_osc=4, save_dir="results"):
         "kernel": cfg.KERNEL,
         "acquisition": cfg.ACQUISITION,
         "bounds": list(cfg.BOUNDS),
-        "timing": {"bo": bo_time, "cmaes": cmaes_time, "random": random_time},
+        "timing": {"bo": bo_time, "turbo": turbo_time, "cmaes": cmaes_time, "random": random_time},
         "timestamp": timestamp,
     })
 
@@ -161,6 +173,7 @@ if __name__ == "__main__":
     parser.add_argument("--controller", choices=CONTROLLER_NAMES, required=True)
     parser.add_argument("--num-neurons", type=int, default=4)
     parser.add_argument("--n-osc", type=int, default=4)
+    parser.add_argument("--n-hidden", type=int, default=8)
     parser.add_argument("--save-dir", type=str, default="results")
     args = parser.parse_args()
-    main(args.env, args.controller, num_neurons=args.num_neurons, n_osc=args.n_osc, save_dir=args.save_dir)
+    main(args.env, args.controller, num_neurons=args.num_neurons, n_osc=args.n_osc, n_hidden=args.n_hidden, save_dir=args.save_dir)

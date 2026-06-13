@@ -1,7 +1,7 @@
 N_STEPS = 1000
 
-N_SEEDS = 5
-N_ITER = 100
+N_SEEDS = 10
+N_ITER = 200
 KERNEL = "matern52"
 ACQUISITION = "ts"
 BOUNDS = (-3., 3.)
