@@ -69,6 +69,44 @@ def log_marginal_likelihood(
 
 
 @partial(jax.jit, static_argnames=("kernel_name",))
+def precompute(
+    params: dict,
+    X_train: jax.Array,
+    y_train: jax.Array,
+    kernel_name: str,
+) -> tuple[jax.Array, jax.Array]:
+    """Factor the training kernel matrix once for reuse during acquisition optimization."""
+    
+    kernel_fn, _ = get_kernel(kernel_name)
+    N = X_train.shape[0]
+    noise = softplus(params["log_noise"]) + JITTER
+    K = kernel_matrix(kernel_fn, X_train, X_train, params["kernel"])
+    L = cholesky(K + noise * jnp.eye(N))
+    alpha = cho_solve((L, True), y_train)
+    return L, alpha
+
+
+@partial(jax.jit, static_argnames=("kernel_name",))
+def predict_precomputed(
+    params: dict,
+    X_train: jax.Array,
+    L: jax.Array,
+    alpha: jax.Array,
+    X_test: jax.Array,
+    kernel_name: str,
+) -> tuple[jax.Array, jax.Array]:
+    """Predict using pre-factored Cholesky"""
+
+    kernel_fn, _ = get_kernel(kernel_name)
+    K_s = kernel_matrix(kernel_fn, X_train, X_test, params["kernel"])
+    K_ss_diag = jax.vmap(lambda x: kernel_fn(x, x, params["kernel"]))(X_test)
+    v = solve_triangular(L, K_s, lower=True)
+    mean = K_s.T @ alpha
+    var = jnp.clip(K_ss_diag - jnp.sum(v**2, axis=0), a_min=0.0)
+    return mean, var
+
+
+@partial(jax.jit, static_argnames=("kernel_name",))
 def predict(
     params: dict,
     X_train: jax.Array,
