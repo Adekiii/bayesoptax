@@ -14,15 +14,15 @@ def run_seeds(
     bounds: jax.Array,
     n_seeds: int = 10,
     base_key: jax.Array | None = None,
+    run_fn: Callable | None = None,
     **run_kwargs,
 ) -> MultiBOResult:
-    """Run the BO loop across n_seeds random seeds.
-
-    TO DO: add documentation
-    """
+    """Run a BO loop across n_seeds random seeds."""
 
     if base_key is None:
         base_key = jr.PRNGKey(0)
+    if run_fn is None:
+        run_fn = run
 
     seed_keys = jr.split(base_key, n_seeds)
 
@@ -35,7 +35,7 @@ def run_seeds(
     for i, key in enumerate(seed_keys):
         print(f"Seed {i+1}/{n_seeds}...", end=" ", flush=True)
 
-        result = run(
+        result = run_fn(
             objective = objective,
             bounds = bounds,
             key = key,

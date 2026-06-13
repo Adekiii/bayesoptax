@@ -1,3 +1,4 @@
+import numpy as np
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -12,14 +13,14 @@ from .random_search import run_random_search
 from ..utils import Bounds
 from .result import BOResult
 
-
-def run(
+# Referenced https://botorch.org/docs/tutorials/turbo_1#maintain-the-turbo-state
+def run_turbo(
         objective: Callable,
         bounds: jax.Array,
         n_init: int = 10,
         n_iter: int = 50,
-        n_candidates: int = 2048,
-        n_restarts: int = 5,
+        n_candidates: int = 512,
+        n_restarts: int = 3,
         kernel_name: str = "rbf",
         acquisition_name: str = "ei",
         acquisition_kwargs: dict | None = None,
@@ -27,12 +28,14 @@ def run(
         X_init: jax.Array | None = None,
         y_init: jax.Array | None = None,
         key: jax.Array | None = None,
+        length: float = 0.8,
+        length_min: float = 0.5**7,
+        length_max: float = 1.6,
+        success_tolerance: int = 3,
+        failure_tolerance: int | None = None,
         max_points: int | None = None,
 ) -> BOResult:
-    """Run BO.
-
-    TO-DO: add documentation
-    """
+    """Run TuRBO (Trust region BO)."""
 
     if key is None:
         key = jr.PRNGKey(0)
@@ -46,6 +49,9 @@ def run(
     acquisition_fn = get_acquisition(acquisition_name)
     lb, ub = bounds[:, 0], bounds[:, 1]
     D = bounds.shape[0]
+
+    if failure_tolerance is None:
+        failure_tolerance = max(D, 5)
 
     if X_init is not None and y_init is not None:
         X_obs = X_init
@@ -63,12 +69,23 @@ def run(
     history = list(init_history)
     fitted_params = None
 
+    L = length
+    success_counter = 0
+    failure_counter = 0
+
     for t in range(n_iter):
-        y_mean = float(y_obs.mean())
-        y_std = float(y_obs.std()) + 1e-8
+        y_mean = y_obs.mean()
+        y_std = y_obs.std() + 1e-8
         y_norm = (y_obs - y_mean) / y_std
 
         X_obs_norm = (X_obs - lb) / (ub - lb)
+
+        best_idx = int(jnp.argmin(y_obs))
+        center = X_obs_norm[best_idx]
+
+        half_L = L / 2.0
+        tr_lb = np.array(jnp.clip(center - half_L, 0.0, 1.0))
+        tr_ub = np.array(jnp.clip(center + half_L, 0.0, 1.0))
 
         if max_points is not None and X_obs.shape[0] > max_points:
             keep_idx = jnp.argsort(y_obs)[:max_points]
@@ -109,20 +126,45 @@ def run(
         key, opt_key = jr.split(key)
         x_next_norm = optimize_acquisition(
             batch_score_fn, single_score_fn, D,
-            n_restarts=n_restarts, n_candidates=n_candidates, key=opt_key
+            n_restarts=n_restarts, n_candidates=n_candidates, key=opt_key,
+            region_bounds=(tr_lb, tr_ub),
+            tr_center=np.array(center),
         )
         X_next = lb + x_next_norm * (ub - lb)
         y_next = objective(X_next)
 
+        prev_best = float(y_obs.min())
         X_obs = jnp.concatenate([X_obs, X_next[None]], axis=0)
         y_obs = jnp.concatenate([y_obs, jnp.array([y_next])], axis=0)
+
+        # Update trust region
+        if float(y_next) < prev_best - 1e-3 * abs(prev_best):
+            success_counter += 1
+            failure_counter = 0
+        else:
+            failure_counter += 1
+            success_counter = 0
+
+        if success_counter >= success_tolerance: # Expand trust region
+            L = min(2.0 * L, length_max)
+            success_counter = 0
+        elif failure_counter >= failure_tolerance: # Shrink trust region
+            L = L / 2.0
+            failure_counter = 0
+
+        if L < length_min:
+            L = length
+            success_counter = 0
+            failure_counter = 0
+            fitted_params = None
 
         history.append(float(y_obs.min()))
 
         print(
-            f"{t+1}/{n_iter} | "
-            f"New y = {float(y_next)} | "
-            f"Best y = {float(y_obs.min())}"
+            f"{t + 1}/{n_iter} | "
+            f"New y = {float(y_next):.4f} | "
+            f"Best y = {float(y_obs.min()):.4f} | "
+            f"L = {L:.4f}"
         )
 
     best_idx = int(jnp.argmin(y_obs))
@@ -131,10 +173,10 @@ def run(
     random_history = run_random_search(objective, bounds, n_init + n_iter, rs_key)
 
     return BOResult(
-        X_obs = X_obs,
-        y_obs = y_obs,
-        best_x = X_obs[best_idx],
-        best_y = float(y_obs[best_idx]),
-        history = jnp.array(history),
-        random_history = random_history,
+        X_obs=X_obs,
+        y_obs=y_obs,
+        best_x=X_obs[best_idx],
+        best_y=float(y_obs[best_idx]),
+        history=jnp.array(history),
+        random_history=random_history,
     )
