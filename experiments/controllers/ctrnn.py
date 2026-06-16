@@ -7,8 +7,8 @@ def init_params(key, num_neurons, n_in=2, n_out=2):
     k1, k2 = jr.split(key)
     return {
         "W": jnp.identity(num_neurons),
-        "U": jr.normal(k1, (num_neurons, n_in)),
-        "V": jr.normal(k2, (n_out, num_neurons)),
+        "U": jr.normal(k1, (num_neurons, n_in)) * 0.1,
+        "V": jr.normal(k2, (n_out, num_neurons)) * 0.1,
         "bias": jnp.zeros(num_neurons),
         "tau": jnp.ones(num_neurons),
     }
