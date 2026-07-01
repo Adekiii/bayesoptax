@@ -1,5 +1,5 @@
 N_SEEDS = 10
-N_ITER = 200
+N_ITER = 1000
 KERNEL = "matern52"
 ACQUISITION = "ts"
 BOUNDS = (-3., 3.)
