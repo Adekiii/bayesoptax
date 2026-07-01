@@ -45,7 +45,8 @@ def fit(
         lr: float = 0.05,
         perturbation_scale: float = 0.5,
         init_params_override: dict | None = None,
-        key: jax.Array | None = None
+        key: jax.Array | None = None,
+        mask: jax.Array | None = None,
 ) -> dict:
     """Returns fitted GP hyperparameters.
 
@@ -59,6 +60,8 @@ def fit(
         perturbation_scale: scale of perturbation applied to params.
         init_params_override: enables 'warm-starting' from previously fitted params.
         key: jax PRNGKey for reproducibility.
+        mask: optional boolean array of shape [N] marking real (True) vs
+            padding (False) rows in a fixed-size observation buffer.
 
     Returns:
         best_params: dict with the params with the highest LML
@@ -83,7 +86,7 @@ def fit(
 
     def loss_fn(flat_params, X, y):
         params = unflatten(flat_params)
-        return -log_marginal_likelihood(params, X, y, kernel_name)
+        return -log_marginal_likelihood(params, X, y, kernel_name, mask=mask)
 
     def run_one(flat_init):
         return _run_adam(loss_fn, flat_init, X, y, max_iter, lr)
