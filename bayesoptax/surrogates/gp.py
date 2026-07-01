@@ -102,7 +102,7 @@ def predict_precomputed(
     K_ss_diag = jax.vmap(lambda x: kernel_fn(x, x, params["kernel"]))(X_test)
     v = solve_triangular(L, K_s, lower=True)
     mean = K_s.T @ alpha
-    var = jnp.clip(K_ss_diag - jnp.sum(v**2, axis=0), a_min=0.0)
+    var = jnp.clip(K_ss_diag - jnp.sum(v**2, axis=0), min=0.0)
     return mean, var
 
 
@@ -148,6 +148,6 @@ def predict(
 
     mean = K_s.T @ alpha
     var = K_ss_diag - jnp.sum(v ** 2, axis=0)
-    var = jnp.clip(var, a_min=0.0)
+    var = jnp.clip(var, min=0.0)
 
     return mean, var

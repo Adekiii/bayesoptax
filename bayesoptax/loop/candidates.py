@@ -1,22 +1,15 @@
 import jax
 import jax.numpy as jnp
-import numpy as np
-from scipy.stats.qmc import Sobol
 
 
 def sample_candidates(key: jax.Array, bounds: jax.Array, n_candidates: int) -> jax.Array:
-    """Sample candidate points using a Sobol sequence within given bounds."""
+    """Sample candidate points uniformly at random within given bounds."""
 
-    lb, ub = np.array(bounds[:, 0]), np.array(bounds[:, 1])
+    lb, ub = bounds[:, 0], bounds[:, 1]
     d = lb.shape[0]
 
-    n_sobol = 1 << (n_candidates - 1).bit_length()
-    seed = int(jax.random.bits(key, dtype=jnp.uint32))
-    sampler = Sobol(d=d, scramble=True, seed=seed)
-    unit_samples = sampler.random(n=n_sobol)[:n_candidates]
-
-    scaled = lb + unit_samples * (ub - lb)
-    return jnp.array(scaled)
+    unit_samples = jax.random.uniform(key, (n_candidates, d))
+    return lb + unit_samples * (ub - lb)
 
 
 def sample_initial(key: jax.Array, bounds: jax.Array, n_init: int) -> jax.Array:

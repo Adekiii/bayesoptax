@@ -1,4 +1,3 @@
-import numpy as np
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -84,8 +83,8 @@ def run_turbo(
         center = X_obs_norm[best_idx]
 
         half_L = L / 2.0
-        tr_lb = np.array(jnp.clip(center - half_L, 0.0, 1.0))
-        tr_ub = np.array(jnp.clip(center + half_L, 0.0, 1.0))
+        tr_lb = jnp.clip(center - half_L, 0.0, 1.0)
+        tr_ub = jnp.clip(center + half_L, 0.0, 1.0)
 
         if max_points is not None and X_obs.shape[0] > max_points:
             keep_idx = jnp.argsort(y_obs)[:max_points]
@@ -128,7 +127,7 @@ def run_turbo(
             batch_score_fn, single_score_fn, D,
             n_restarts=n_restarts, n_candidates=n_candidates, key=opt_key,
             region_bounds=(tr_lb, tr_ub),
-            tr_center=np.array(center),
+            tr_center=center,
         )
         X_next = lb + x_next_norm * (ub - lb)
         y_next = objective(X_next)

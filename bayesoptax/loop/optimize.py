@@ -1,8 +1,7 @@
 import jax
 import jax.numpy as jnp
-import numpy as np
-from scipy.optimize import minimize
-from scipy.stats.qmc import Sobol
+import jax.random as jr
+import optax
 from typing import Callable
 
 
@@ -12,16 +11,16 @@ def optimize_acquisition(
         D: int,
         n_restarts: int = 3,
         n_candidates: int = 512,
+        max_iter: int = 100,
+        lr: float = 0.05,
         key: jax.Array | None = None,
-        region_bounds: tuple[np.ndarray, np.ndarray] | None = None,
-        tr_center: np.ndarray | None = None,
+        region_bounds: tuple[jax.Array, jax.Array] | None = None,
+        tr_center: jax.Array | None = None,
 ) -> jax.Array:
-    """Optimizes acquisition using multi-start L-BFGS-B."""
+    """Optimizes acquisition using multi-start gradient ascent."""
 
-    n_sobol = 1 << (n_candidates - 1).bit_length()
-    seed = int(jax.random.bits(key, dtype=jnp.uint32)) if key is not None else 0
-    sampler = Sobol(d=D, scramble=True, seed=seed)
-    raw = np.array(sampler.random(n=n_sobol)[:n_candidates])
+    cand_key, mask_key, forced_key = jr.split(key if key is not None else jr.PRNGKey(0), 3)
+    raw = jr.uniform(cand_key, (n_candidates, D))
 
     if region_bounds is not None:
         lb_r, ub_r = region_bounds
@@ -29,40 +28,42 @@ def optimize_acquisition(
 
         if tr_center is not None:
             prob_perturb = min(20.0 / D, 1.0)
-            rng = np.random.default_rng(seed + 1)
-            mask = rng.random((len(pert), D)) <= prob_perturb
-            # ensure every candidate perturbs at least one dimension
-            zero_rows = np.where(mask.sum(axis=1) == 0)[0]
-            if len(zero_rows) > 0:
-                mask[zero_rows, rng.integers(0, D, size=len(zero_rows))] = True
-            X_cands_norm = np.tile(tr_center, (len(pert), 1))
-            X_cands_norm[mask] = pert[mask]
+            mask = jr.bernoulli(mask_key, prob_perturb, (n_candidates, D))
+            # ensure every candidate perturbs at least one (random) dimension
+            forced_dims = jr.randint(forced_key, (n_candidates,), 0, D)
+            mask = mask | jax.nn.one_hot(forced_dims, D, dtype=bool)
+            X_cands_norm = jnp.where(mask, pert, tr_center[None, :])
         else:
             X_cands_norm = pert
 
-        X_cands_norm = jnp.array(X_cands_norm)
-        lbfgsb_bounds = [(float(lb_r[i]), float(ub_r[i])) for i in range(D)]
+        lb_bounds, ub_bounds = lb_r, ub_r
     else:
-        X_cands_norm = jnp.array(raw)
-        lbfgsb_bounds = [(0.0, 1.0)] * D
+        X_cands_norm = raw
+        lb_bounds = jnp.zeros(D)
+        ub_bounds = jnp.ones(D)
 
     scores = batch_score_fn(X_cands_norm)
     top_idx = jnp.argsort(scores)[-n_restarts:]
-    X_starts = np.array(X_cands_norm[top_idx])
+    X_starts = X_cands_norm[top_idx]
 
-    val_and_grad_fn = jax.jit(jax.value_and_grad(lambda x: -single_score_fn(x)))
+    def neg_score(x):
+        return -single_score_fn(x)
 
-    best_x_norm = X_starts[-1]
-    best_val = -np.inf
+    opt = optax.adam(lr)
 
-    for x0 in X_starts:
-        def obj(x):
-            val, grad = val_and_grad_fn(jnp.array(x))
-            return float(val), np.array(grad, dtype=np.float64)
+    def run_one(x0):
+        opt_state = opt.init(x0)
 
-        result = minimize(obj, x0, method="L-BFGS-B", jac=True, bounds=lbfgsb_bounds)
-        if -result.fun > best_val:
-            best_val = -result.fun
-            best_x_norm = result.x
+        def step(carry, _):
+            x, opt_state = carry
+            _, grad = jax.value_and_grad(neg_score)(x)
+            updates, opt_state = opt.update(grad, opt_state, x)
+            x = jnp.clip(optax.apply_updates(x, updates), lb_bounds, ub_bounds)
+            return (x, opt_state), None
 
-    return jnp.array(best_x_norm)
+        (x_final, _), _ = jax.lax.scan(step, (x0, opt_state), None, length=max_iter)
+        return x_final, neg_score(x_final)
+
+    candidates, losses = jax.vmap(run_one)(X_starts)
+    best_idx = jnp.argmin(losses)
+    return candidates[best_idx]

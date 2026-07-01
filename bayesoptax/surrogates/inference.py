@@ -1,11 +1,8 @@
-import numpy as np
-import scipy.optimize as scipy_opt
-
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 from jax.flatten_util import ravel_pytree
-from functools import partial
+import optax
 
 from .gp import log_marginal_likelihood, init_params
 
@@ -22,56 +19,21 @@ def _perturb_params(params: dict, key: jax.Array, scale: float = 0.5) -> dict:
     return treedef.unflatten(perturbed)
 
 
-@partial(jax.jit, static_argnames=("kernel_name", "unflatten"))
-def _loss_and_grad(
-    flat_params: jax.Array,
-    unflatten,
-    X: jax.Array,
-    y: jax.Array,
-    kernel_name: str
-) -> tuple[jax.Array, jax.Array]:
-    """Use negative LML and its gradient w.r.t. params."""
+def _run_adam(loss_fn, flat_init, X, y, max_iter, lr):
+    """Adam descent."""
 
-    params = unflatten(flat_params)
-    loss, grad = jax.value_and_grad(
-        lambda p: -log_marginal_likelihood(p, X, y, kernel_name)
-    )(params)
-    flat_grad, _ = ravel_pytree(grad)
-    return loss, flat_grad
+    opt = optax.adam(lr)
+    opt_state = opt.init(flat_init)
 
+    def step(carry, _):
+        x, opt_state = carry
+        _, grad = jax.value_and_grad(loss_fn)(x, X, y)
+        updates, opt_state = opt.update(grad, opt_state, x)
+        x = optax.apply_updates(x, updates)
+        return (x, opt_state), None
 
-def _fit_single(
-        init_p: dict,
-        X: jax.Array,
-        y: jax.Array,
-        kernel_name: str,
-        max_iter: int,
-        tol: float
-) -> tuple[dict, float]:
-    """Run L-BFGS-B for a single initialization."""
-
-    flat_init, unflatten = ravel_pytree(init_p)
-
-    def loss_and_grad_np(flat_params_np: np.ndarray):
-        flat_params = jnp.array(flat_params_np)
-        loss, grad = _loss_and_grad(flat_params, unflatten, X, y, kernel_name)
-        return np.array(loss, dtype=np.float64), np.array(grad, dtype=np.float64)
-    
-    result = scipy_opt.minimize(
-        loss_and_grad_np,
-        np.array(flat_init, dtype=np.float64),
-        method="L-BFGS-B",
-        jac=True,
-        options = {
-            "maxiter": max_iter,
-            "ftol": 1e-9,
-            "gtol": tol
-        }
-    )
-
-    optimized_params = unflatten(jnp.array(result.x))
-    lml = float(-result.fun)
-    return optimized_params, lml
+    (x_final, _), _ = jax.lax.scan(step, (flat_init, opt_state), None, length=max_iter)
+    return x_final, loss_fn(x_final, X, y)
 
 
 def fit(
@@ -80,7 +42,7 @@ def fit(
         kernel_name: str,
         n_restarts: int = 3,
         max_iter: int = 200,
-        tol: float = 1e-5,
+        lr: float = 0.05,
         perturbation_scale: float = 0.5,
         init_params_override: dict | None = None,
         key: jax.Array | None = None
@@ -92,8 +54,8 @@ def fit(
         y: training targets of shape [N]. Normalize for better results.
         kernel_name: string of the kernel name to use.
         n_restarts: number of random restarts.
-        max_iter: max L-BFGS-B iterations.
-        tol: norm tolerance for convergence.
+        max_iter: number of Adam steps.
+        lr: Adam learning rate.
         perturbation_scale: scale of perturbation applied to params.
         init_params_override: enables 'warm-starting' from previously fitted params.
         key: jax PRNGKey for reproducibility.
@@ -108,21 +70,25 @@ def fit(
 
     D = X.shape[1] if X.ndim > 1 else 1
     fresh_params = init_params(kernel_name, D)
+    _, unflatten = ravel_pytree(fresh_params)
 
     restart_keys = jr.split(key, n_restarts)
-    init_params_list = [
-        _perturb_params(fresh_params, k, scale=perturbation_scale)
-        for k in restart_keys
-    ]
+    init_flats = jax.vmap(
+        lambda k: ravel_pytree(_perturb_params(fresh_params, k, scale=perturbation_scale))[0]
+    )(restart_keys)
+
     if init_params_override is not None:
-        init_params_list[0] = init_params_override
- 
-    results = [
-        _fit_single(p, X, y, kernel_name, max_iter, tol)
-        for p in init_params_list
-    ]
- 
-    all_params, all_lmls = zip(*results)
-    best_idx = int(jnp.argmax(jnp.array(all_lmls)))
-    best_params = all_params[best_idx]
+        override_flat, _ = ravel_pytree(init_params_override)
+        init_flats = init_flats.at[0].set(override_flat)
+
+    def loss_fn(flat_params, X, y):
+        params = unflatten(flat_params)
+        return -log_marginal_likelihood(params, X, y, kernel_name)
+
+    def run_one(flat_init):
+        return _run_adam(loss_fn, flat_init, X, y, max_iter, lr)
+
+    all_flat_params, all_losses = jax.vmap(run_one)(init_flats)
+    best_idx = jnp.nanargmin(all_losses)
+    best_params = unflatten(all_flat_params[best_idx])
     return best_params
