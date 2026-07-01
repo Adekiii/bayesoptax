@@ -12,7 +12,7 @@ from jax.flatten_util import ravel_pytree
 import gymnax
 
 from . import config as cfg
-from bayesoptax.loop import run_seeds, run_cmaes_seeds, run_random_seeds, plot_comparison, save_run, run_turbo
+from bayesoptax.loop import run_batched, run_turbo_batched, run_cmaes_seeds, run_random_seeds, plot_comparison, save_run
 from bayesoptax.utils import Bounds
 
 env, env_params = gymnax.make("Pendulum-v1")
@@ -96,7 +96,7 @@ def main(controller_name, num_neurons=2, n_osc=2, n_hidden=8, save_dir="results"
 
     print("\n--- Bayesian Optimisation ---")
     t0 = time.time()
-    bo = run_seeds(
+    bo = run_batched(
         objective=objective, bounds=bounds, n_seeds=cfg.N_SEEDS,
         n_init=n_init, n_iter=cfg.N_ITER,
         kernel_name=cfg.KERNEL, acquisition_name=cfg.ACQUISITION,
@@ -106,11 +106,11 @@ def main(controller_name, num_neurons=2, n_osc=2, n_hidden=8, save_dir="results"
 
     print("\n--- TuRBO ---")
     t0 = time.time()
-    turbo = run_seeds(
+    turbo = run_turbo_batched(
         objective=objective, bounds=bounds, n_seeds=cfg.N_SEEDS,
         n_init=n_init, n_iter=cfg.N_ITER,
         kernel_name=cfg.KERNEL, acquisition_name=cfg.ACQUISITION,
-        base_key=turbo_key, run_fn=run_turbo,
+        base_key=turbo_key,
     )
     turbo_time = time.time() - t0
 
