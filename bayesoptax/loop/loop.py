@@ -64,8 +64,8 @@ def run(
     fitted_params = None
 
     for t in range(n_iter):
-        y_mean = float(y_obs.mean())
-        y_std = float(y_obs.std()) + 1e-8
+        y_mean = y_obs.mean()
+        y_std = y_obs.std() + 1e-8
         y_norm = (y_obs - y_mean) / y_std
 
         X_obs_norm = (X_obs - lb) / (ub - lb)
@@ -93,7 +93,7 @@ def run(
         L_chol, alpha = precompute(fitted_params, X_gp, y_gp, kernel_name)
 
         key, acq_key = jr.split(key)
-        dyn_kwargs = {"best_y": float(y_norm.min()), "key": acq_key}
+        dyn_kwargs = {"best_y": y_norm.min(), "key": acq_key}
         merged_kwargs = {**acquisition_kwargs, **dyn_kwargs}
 
         def batch_score_fn(X_norm, _params=fitted_params, _X_obs=X_gp,
@@ -117,12 +117,13 @@ def run(
         X_obs = jnp.concatenate([X_obs, X_next[None]], axis=0)
         y_obs = jnp.concatenate([y_obs, jnp.array([y_next])], axis=0)
 
-        history.append(float(y_obs.min()))
+        best_y_so_far = float(y_obs.min())
+        history.append(best_y_so_far)
 
         print(
             f"{t+1}/{n_iter} | "
             f"New y = {float(y_next)} | "
-            f"Best y = {float(y_obs.min())}"
+            f"Best y = {best_y_so_far}"
         )
 
     best_idx = int(jnp.argmin(y_obs))

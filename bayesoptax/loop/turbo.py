@@ -79,7 +79,7 @@ def run_turbo(
 
         X_obs_norm = (X_obs - lb) / (ub - lb)
 
-        best_idx = int(jnp.argmin(y_obs))
+        best_idx = jnp.argmin(y_obs)
         center = X_obs_norm[best_idx]
 
         half_L = L / 2.0
@@ -109,7 +109,7 @@ def run_turbo(
         L_chol, alpha = precompute(fitted_params, X_gp, y_gp, kernel_name)
 
         key, acq_key = jr.split(key)
-        dyn_kwargs = {"best_y": float(y_norm.min()), "key": acq_key}
+        dyn_kwargs = {"best_y": y_norm.min(), "key": acq_key}
         merged_kwargs = {**acquisition_kwargs, **dyn_kwargs}
 
         def batch_score_fn(X_norm, _params=fitted_params, _X_obs=X_gp,
@@ -133,11 +133,12 @@ def run_turbo(
         y_next = objective(X_next)
 
         prev_best = float(y_obs.min())
+        y_next_val = float(y_next)
         X_obs = jnp.concatenate([X_obs, X_next[None]], axis=0)
         y_obs = jnp.concatenate([y_obs, jnp.array([y_next])], axis=0)
 
         # Update trust region
-        if float(y_next) < prev_best - 1e-3 * abs(prev_best):
+        if y_next_val < prev_best - 1e-3 * abs(prev_best):
             success_counter += 1
             failure_counter = 0
         else:
@@ -157,12 +158,13 @@ def run_turbo(
             failure_counter = 0
             fitted_params = None
 
-        history.append(float(y_obs.min()))
+        best_y_so_far = float(y_obs.min())
+        history.append(best_y_so_far)
 
         print(
             f"{t + 1}/{n_iter} | "
-            f"New y = {float(y_next):.4f} | "
-            f"Best y = {float(y_obs.min()):.4f} | "
+            f"New y = {y_next_val:.4f} | "
+            f"Best y = {best_y_so_far:.4f} | "
             f"L = {L:.4f}"
         )
 
