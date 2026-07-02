@@ -1,15 +1,9 @@
 # Run from main directory using command:
-# python -m experiments.brax.run --env [environment_name] --controller [linear|ctrnn|coupled_osc]
+# python -m experiments.brax.run --env [swimmer|walker2d] --controller [linear|ctrnn|coupled_osc]
 
-# available Brax environments and corresponding (obs_dim, action_dim):
-# inverted_pendulum        (4,  1)
-# inverted_double_pendulum (8,  1)
+# environments and corresponding (obs_dim, action_dim):
 # swimmer                  (8,  2)
-# reacher                  (11, 2)
-# hopper                   (11, 3)
 # walker2d                 (17, 6)
-# halfcheetah              (17, 6)
-# ant                      (27, 8)
 import argparse
 import importlib
 import time
@@ -19,9 +13,9 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 from jax.flatten_util import ravel_pytree
-from brax import envs
 
 from . import config as cfg
+from .mjx_envs import get_mjx_environment, MJX_ENVS
 from bayesoptax.loop import run_batched, run_turbo_batched, run_cmaes_seeds, run_random_seeds, plot_comparison, save_run
 from bayesoptax.utils import Bounds
 
@@ -84,7 +78,7 @@ def make_objective(controller, unflatten, state_kwargs, env):
 
 
 def main(env_name, controller_name, num_neurons=4, n_osc=4, n_hidden=8, save_dir="results"):
-    env = envs.get_environment(env_name)
+    env = get_mjx_environment(env_name)
     obs_dim = env.observation_size
     action_dim = env.action_size
     print(f"Env: {env_name} | obs_dim={obs_dim} | action_dim={action_dim}")
@@ -149,6 +143,7 @@ def main(env_name, controller_name, num_neurons=4, n_osc=4, n_hidden=8, save_dir
     run_dir = f"{save_dir}/brax_{env_name}_{controller_name}_{timestamp}"
     save_run(run_dir, results, meta={
         "experiment": "brax",
+        "physics_backend": "mjx",
         "env_name": env_name,
         "controller": controller_name,
         "num_neurons": num_neurons,
@@ -169,7 +164,7 @@ def main(env_name, controller_name, num_neurons=4, n_osc=4, n_hidden=8, save_dir
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--env", type=str, default="swimmer")
+    parser.add_argument("--env", choices=list(MJX_ENVS), default="swimmer")
     parser.add_argument("--controller", choices=CONTROLLER_NAMES, required=True)
     parser.add_argument("--num-neurons", type=int, default=4)
     parser.add_argument("--n-osc", type=int, default=4)
