@@ -1,3 +1,4 @@
+import time
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -12,11 +13,52 @@ from ..utils import Bounds
 from .result import MultiBOResult
 
 
+def _run_scan_in_chunks(scan_step, init_carry, n_iter, chunk_size):
+    """Runs scan_step over n_iter steps in chunks, printing progress between chunks."""
+
+    carry = init_carry
+    history_chunks = []
+    n_done = 0
+    t_start = time.time()
+
+    n_chunks = -(-n_iter // chunk_size)
+    print(f"Running {n_iter} iterations in {n_chunks} chunk(s) of up to {chunk_size}...")
+
+    while n_done < n_iter:
+        this_chunk = min(chunk_size, n_iter - n_done)
+        carry, history_chunk = jax.lax.scan(scan_step, carry, xs=None, length=this_chunk)
+        jax.block_until_ready(carry)
+        history_chunks.append(history_chunk)
+        n_done += this_chunk
+
+        elapsed = time.time() - t_start
+        eta = elapsed / n_done * (n_iter - n_done)
+        best_now = history_chunk[-1]
+        print(
+            f"[{n_done}/{n_iter}] mean best y = {float(jnp.mean(best_now)):.4f} | "
+            f"per seed = {best_now} | elapsed = {elapsed:.1f}s | ETA = {eta:.1f}s"
+        )
+
+    history_per_iter = jnp.concatenate(history_chunks, axis=0)
+    return carry, history_per_iter
+
+
+def _select_gp_subset(X_obs_norm, y_obs, y_norm, mask, max_points):
+    """Selects a fixed-size subset of the best-so-far points for the GP."""
+
+    if max_points is None:
+        return X_obs_norm, y_norm, mask
+
+    rank_key = jnp.where(mask, y_obs, jnp.inf)
+    keep_idx = jnp.argsort(rank_key)[:max_points]
+    return X_obs_norm[keep_idx], y_norm[keep_idx], mask[keep_idx]
+
+
 def _bo_step_one_seed(
         X_obs, y_obs, count, prev_params,
         fit_key, acq_key, opt_key,
         lb, ub, D, kernel_name, acquisition_fn,
-        n_restarts, fit_max_iter, n_candidates, acq_restarts,
+        n_restarts, fit_max_iter, n_candidates, acq_restarts, max_points,
 ):
     """One BO iteration for a single seed. Pure function of arrays - vmappable across seeds."""
 
@@ -30,22 +72,23 @@ def _bo_step_one_seed(
     y_norm = (y_obs - y_mean) / y_std
 
     X_obs_norm = (X_obs - lb) / (ub - lb)
+    X_gp, y_gp, gp_mask = _select_gp_subset(X_obs_norm, y_obs, y_norm, mask, max_points)
 
     fitted_params = fit(
-        X_obs_norm, y_norm, kernel_name=kernel_name,
+        X_gp, y_gp, kernel_name=kernel_name,
         n_restarts=n_restarts, max_iter=fit_max_iter,
-        init_params_override=prev_params, key=fit_key, mask=mask,
+        init_params_override=prev_params, key=fit_key, mask=gp_mask,
     )
 
-    L_chol, alpha = precompute(fitted_params, X_obs_norm, y_norm, kernel_name, mask=mask)
-    best_y_norm = jnp.min(jnp.where(mask, y_norm, jnp.inf))
+    L_chol, alpha = precompute(fitted_params, X_gp, y_gp, kernel_name, mask=gp_mask)
+    best_y_norm = jnp.min(jnp.where(gp_mask, y_gp, jnp.inf))
 
     def batch_score_fn(X_norm):
-        mean, var = predict_precomputed(fitted_params, X_obs_norm, L_chol, alpha, X_norm, kernel_name, mask=mask)
+        mean, var = predict_precomputed(fitted_params, X_gp, L_chol, alpha, X_norm, kernel_name, mask=gp_mask)
         return acquisition_fn(mean, var, best_y=best_y_norm, key=acq_key)
 
     def single_score_fn(x_norm):
-        mean, var = predict_precomputed(fitted_params, X_obs_norm, L_chol, alpha, x_norm[None], kernel_name, mask=mask)
+        mean, var = predict_precomputed(fitted_params, X_gp, L_chol, alpha, x_norm[None], kernel_name, mask=gp_mask)
         return acquisition_fn(mean, var, best_y=best_y_norm, key=acq_key).squeeze()
 
     x_next_norm = optimize_acquisition(
@@ -69,6 +112,8 @@ def run_batched(
         kernel_name: str = "rbf",
         acquisition_name: str = "ei",
         base_key: jax.Array | None = None,
+        chunk_size: int = 20,
+        max_points: int | None = None,
 ) -> MultiBOResult:
     """Run standard BO across n_seeds independent trajectories simultaneously."""
 
@@ -80,6 +125,8 @@ def run_batched(
     acquisition_fn = get_acquisition(acquisition_name)
     lb, ub = bounds[:, 0], bounds[:, 1]
     D = bounds.shape[0]
+    if max_points is not None:
+        max_points = min(max_points, n_init + n_iter)
 
     seed_keys = jr.split(base_key, n_seeds)
     init_sample_keys, loop_keys = jax.vmap(lambda k: tuple(jr.split(k)))(seed_keys)
@@ -106,7 +153,7 @@ def run_batched(
                 X_obs_s, y_obs_s, count, prev_params_s,
                 fit_key, acq_key, opt_key,
                 lb, ub, D, kernel_name, acquisition_fn,
-                n_restarts, fit_max_iter, n_candidates, acq_restarts,
+                n_restarts, fit_max_iter, n_candidates, acq_restarts, max_points,
             )
 
         X_next, fitted_params = jax.vmap(per_seed)(keys, X_obs, y_obs, prev_params)
@@ -123,9 +170,8 @@ def run_batched(
         return (X_obs, y_obs, new_count, fitted_params, new_keys), best_so_far
 
     init_carry = (X_obs, y_obs, count, prev_params, loop_keys)
-    (X_obs_final, y_obs_final, _, _, _), history_per_iter = jax.lax.scan(
-        scan_step, init_carry, xs=None, length=n_iter
-    )
+    final_carry, history_per_iter = _run_scan_in_chunks(scan_step, init_carry, n_iter, chunk_size)
+    X_obs_final, y_obs_final = final_carry[0], final_carry[1]
 
     init_history = jax.vmap(jnp.minimum.accumulate)(y_init)
     history = jnp.concatenate([init_history, history_per_iter.T], axis=1)
@@ -149,7 +195,7 @@ def _turbo_step_one_seed(
         X_obs, y_obs, count, prev_params, L,
         fit_key, acq_key, opt_key,
         lb, ub, D, kernel_name, acquisition_fn,
-        n_restarts, fit_max_iter, n_candidates, acq_restarts,
+        n_restarts, fit_max_iter, n_candidates, acq_restarts, max_points,
 ):
     """One TuRBO iteration for a single seed."""
 
@@ -171,21 +217,23 @@ def _turbo_step_one_seed(
     tr_lb = jnp.clip(center - half_L, 0.0, 1.0)
     tr_ub = jnp.clip(center + half_L, 0.0, 1.0)
 
+    X_gp, y_gp, gp_mask = _select_gp_subset(X_obs_norm, y_obs, y_norm, mask, max_points)
+
     fitted_params = fit(
-        X_obs_norm, y_norm, kernel_name=kernel_name,
+        X_gp, y_gp, kernel_name=kernel_name,
         n_restarts=n_restarts, max_iter=fit_max_iter,
-        init_params_override=prev_params, key=fit_key, mask=mask,
+        init_params_override=prev_params, key=fit_key, mask=gp_mask,
     )
 
-    L_chol, alpha = precompute(fitted_params, X_obs_norm, y_norm, kernel_name, mask=mask)
-    best_y_norm = jnp.min(jnp.where(mask, y_norm, jnp.inf))
+    L_chol, alpha = precompute(fitted_params, X_gp, y_gp, kernel_name, mask=gp_mask)
+    best_y_norm = jnp.min(jnp.where(gp_mask, y_gp, jnp.inf))
 
     def batch_score_fn(X_norm):
-        mean, var = predict_precomputed(fitted_params, X_obs_norm, L_chol, alpha, X_norm, kernel_name, mask=mask)
+        mean, var = predict_precomputed(fitted_params, X_gp, L_chol, alpha, X_norm, kernel_name, mask=gp_mask)
         return acquisition_fn(mean, var, best_y=best_y_norm, key=acq_key)
 
     def single_score_fn(x_norm):
-        mean, var = predict_precomputed(fitted_params, X_obs_norm, L_chol, alpha, x_norm[None], kernel_name, mask=mask)
+        mean, var = predict_precomputed(fitted_params, X_gp, L_chol, alpha, x_norm[None], kernel_name, mask=gp_mask)
         return acquisition_fn(mean, var, best_y=best_y_norm, key=acq_key).squeeze()
 
     x_next_norm = optimize_acquisition(
@@ -201,7 +249,7 @@ def _update_trust_region(
         y_next, prev_best, L, success_counter, failure_counter,
         length_init, length_min, length_max, success_tolerance, failure_tolerance,
 ):
-    """Vectorized version of TuRBO."""
+    """Vectorized version of TuRBO's trust-region state machine."""
 
     improved = y_next < prev_best - 1e-3 * jnp.abs(prev_best)
 
@@ -225,6 +273,8 @@ def _update_trust_region(
 
 
 def _select_per_seed(restart, fresh_leaf, new_leaf):
+    """jnp.where(restart, fresh_leaf, new_leaf) with restart broadcast over any trailing dims."""
+
     r = restart.reshape((-1,) + (1,) * (new_leaf.ndim - 1))
     return jnp.where(r, fresh_leaf, new_leaf)
 
@@ -247,6 +297,8 @@ def run_turbo_batched(
         success_tolerance: int = 3,
         failure_tolerance: int | None = None,
         base_key: jax.Array | None = None,
+        chunk_size: int = 20,
+        max_points: int | None = None,
 ) -> MultiBOResult:
     """Run TuRBO across n_seeds independent trajectories simultaneously."""
 
@@ -258,6 +310,8 @@ def run_turbo_batched(
     acquisition_fn = get_acquisition(acquisition_name)
     lb, ub = bounds[:, 0], bounds[:, 1]
     D = bounds.shape[0]
+    if max_points is not None:
+        max_points = min(max_points, n_init + n_iter)
 
     if failure_tolerance is None:
         failure_tolerance = max(D, 5)
@@ -291,7 +345,7 @@ def run_turbo_batched(
                 X_obs_s, y_obs_s, count, prev_params_s, L_s,
                 fit_key, acq_key, opt_key,
                 lb, ub, D, kernel_name, acquisition_fn,
-                n_restarts, fit_max_iter, n_candidates, acq_restarts,
+                n_restarts, fit_max_iter, n_candidates, acq_restarts, max_points,
             )
 
         X_next, fitted_params = jax.vmap(per_seed)(keys, X_obs, y_obs, prev_params, L)
@@ -328,9 +382,8 @@ def run_turbo_batched(
         return new_carry, best_so_far
 
     init_carry = (X_obs, y_obs, count, prev_params, L, success_counter, failure_counter, loop_keys)
-    (X_obs_final, y_obs_final, *_), history_per_iter = jax.lax.scan(
-        scan_step, init_carry, xs=None, length=n_iter
-    )
+    final_carry, history_per_iter = _run_scan_in_chunks(scan_step, init_carry, n_iter, chunk_size)
+    X_obs_final, y_obs_final = final_carry[0], final_carry[1]
 
     init_history = jax.vmap(jnp.minimum.accumulate)(y_init)
     history = jnp.concatenate([init_history, history_per_iter.T], axis=1)

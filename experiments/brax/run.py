@@ -112,7 +112,7 @@ def main(env_name, controller_name, num_neurons=4, n_osc=4, n_hidden=8, save_dir
         objective=objective, bounds=bounds, n_seeds=cfg.N_SEEDS,
         n_init=n_init, n_iter=cfg.N_ITER,
         kernel_name=cfg.KERNEL, acquisition_name=cfg.ACQUISITION,
-        base_key=bo_key,
+        base_key=bo_key, max_points=n_init + 200,
     )
     bo_time = time.time() - t0
 
@@ -122,7 +122,7 @@ def main(env_name, controller_name, num_neurons=4, n_osc=4, n_hidden=8, save_dir
         objective=objective, bounds=bounds, n_seeds=cfg.N_SEEDS,
         n_init=n_init, n_iter=cfg.N_ITER,
         kernel_name=cfg.KERNEL, acquisition_name=cfg.ACQUISITION,
-        base_key=turbo_key,
+        base_key=turbo_key, max_points=n_init + 200,
     )
     turbo_time = time.time() - t0
 
